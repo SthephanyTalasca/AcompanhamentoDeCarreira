@@ -1,0 +1,42 @@
+@import url('https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=swap');
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Poppins", ui-sans-serif, system-ui, sans-serif;
+  --font-heading: "Poppins", serif; /* Fallback for Roca */
+
+  --color-nibo-petroleo: #002d72;
+  --color-nibo-roxo: #6431e2;
+  --color-nibo-gelo: #b8ccea;
+  --color-nibo-azul-escuro: #0072ce;
+  --color-nibo-azul-claro: #41b6e6;
+  --color-nibo-pink: #ff40b3;
+  --color-nibo-amarelo: #ffe800;
+
+  --radius-nibo-card: 16px;
+  --radius-nibo-pill: 9999px;
+
+  --shadow-nibo: 0 4px 20px -2px rgba(0, 45, 114, 0.08);
+
+  --spacing-nibo-xs: 4px;
+  --spacing-nibo-sm: 8px;
+  --spacing-nibo-md: 16px;
+  --spacing-nibo-lg: 24px;
+  --spacing-nibo-xl: 32px;
+  --spacing-nibo-2xl: 48px;
+  --spacing-nibo-3xl: 64px;
+}
+
+@layer base {
+  body {
+    @apply bg-[#ffffff] text-nibo-petroleo antialiased;
+  }
+}
+
+.nibo-gradient-1 {
+  background: linear-gradient(180deg, #6431e2 0%, #002d72 100%);
+}
+
+.nibo-gradient-2 {
+  background: linear-gradient(135deg, #6431e2 0%, #41b6e6 100%);
+}
