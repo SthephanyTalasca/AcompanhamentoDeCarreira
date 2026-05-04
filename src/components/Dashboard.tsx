@@ -1,270 +1,287 @@
-import { useState, useEffect } from "react";
-import { Link } from "react-router-dom";
-import { Users, Star, Calendar, AlertTriangle, TrendingUp, Award, ArrowUpRight } from "lucide-react";
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell } from "recharts";
-import { motion } from "motion/react";
-import { cn } from "@/src/lib/utils";
+import { ResponsiveContainer, AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip } from 'recharts';
+import { type PerformanceRecord, type Advisor } from '../types';
+import { formatPercentage, cn } from '../lib/utils';
+import { TrendingUp, Award, Clock, Calendar, AlertCircle } from 'lucide-react';
+import { motion } from 'motion/react';
+import { ScorecardView } from './ScorecardView';
 
-interface CSRanking {
-  id: number;
-  name: string;
-  overallScore: number;
-  meetingsCount: number;
-  churnRiskCount: number;
-  scores: Record<string, number>;
+interface DashboardProps {
+  performance: PerformanceRecord[];
+  advisor: Advisor;
 }
 
-interface Meeting {
-  id: string;
-  clientName: string;
-  csName: string;
-  date: string;
-  score: number;
-  health: string;
-  churnRisk: string;
-}
+export function Dashboard({ performance, advisor }: DashboardProps) {
+  const latestPerformance = performance[performance.length - 1]?.percentage || 0;
+  const prevPerformance = performance[performance.length - 2]?.percentage || 0;
+  const diff = latestPerformance - prevPerformance;
 
-interface TeamStat {
-  category: string;
-  score: number;
-}
-
-export default function Dashboard() {
-  const [csRanking, setCsRanking] = useState<CSRanking[]>([]);
-  const [meetings, setMeetings] = useState<Meeting[]>([]);
-  const [teamStats, setTeamStats] = useState<TeamStat[]>([]);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    const fetchData = async () => {
-      try {
-        const [csRes, meetingsRes, statsRes] = await Promise.all([
-          fetch("/api/cs-ranking"),
-          fetch("/api/meetings"),
-          fetch("/api/team-stats")
-        ]);
-        
-        setCsRanking(await csRes.json());
-        setMeetings(await meetingsRes.json());
-        setTeamStats(await statsRes.json());
-      } catch (error) {
-        console.error("Error fetching dashboard data:", error);
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    fetchData();
-  }, []);
-
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center h-full">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-nibo-roxo"></div>
-      </div>
+  // Alert Logic
+  const getAlertStatus = () => {
+    const cycleMonths = ['2025-08', '2025-09', '2025-10', '2025-11', '2025-12', '2026-01', '2026-02', '2026-03', '2026-04', '2026-05', '2026-06', '2026-07'];
+    const failuresInCycle = performance.filter(p => 
+      cycleMonths.includes(p.month) && 
+      p.status === 'normal' && 
+      p.percentage < 1.0
     );
-  }
 
-  const topCS = [...csRanking].sort((a, b) => b.overallScore - a.overallScore)[0];
-  const mostMeetingsCS = [...csRanking].sort((a, b) => b.meetingsCount - a.meetingsCount)[0];
-
-  return (
-    <div className="max-w-7xl mx-auto space-y-nibo-xl">
-      <div className="flex justify-between items-end">
-        <div>
-          <h2 className="text-2xl font-bold text-nibo-petroleo">Dashboard de Performance</h2>
-          <p className="text-slate-500">Visão geral da qualidade do atendimento do time de CS.</p>
-        </div>
-        <div className="text-sm font-medium text-slate-500 bg-white px-nibo-md py-nibo-sm rounded-lg border border-nibo-gelo/30 shadow-sm">
-          Últimos 30 dias
-        </div>
-      </div>
-
-      {/* Highlights */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-nibo-lg">
-        <HighlightCard
-          title="Média Geral do Time"
-          value="4.5"
-          subtitle="+0.2 vs mês passado"
-          icon={TrendingUp}
-          color="purple"
-        />
-        <HighlightCard
-          title="Destaque em Nota"
-          value={topCS?.name || "-"}
-          subtitle={`Nota: ${topCS?.overallScore || "-"}`}
-          icon={Award}
-          color="pink"
-        />
-        <HighlightCard
-          title="Destaque em Volume"
-          value={mostMeetingsCS?.name || "-"}
-          subtitle={`${mostMeetingsCS?.meetingsCount || "-"} reuniões realizadas`}
-          icon={Users}
-          color="blue"
-        />
-      </div>
-
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-nibo-xl">
-        {/* CS Ranking */}
-        <section className="bg-white rounded-nibo-card border border-nibo-gelo/30 shadow-nibo overflow-hidden">
-          <div className="p-nibo-md border-b border-nibo-gelo/20 flex justify-between items-center">
-            <h3 className="font-bold text-nibo-petroleo flex items-center gap-nibo-xs">
-              <Users className="w-5 h-5 text-nibo-azul-escuro" />
-              Ranking de CSs
-            </h3>
-          </div>
-          <div className="overflow-x-auto">
-            <table className="w-full text-left border-collapse">
-              <thead>
-                <tr className="bg-nibo-gelo/10">
-                  <th className="px-nibo-md py-nibo-md text-xs font-bold text-slate-500 uppercase tracking-wider">CS</th>
-                  <th className="px-nibo-md py-nibo-md text-xs font-bold text-slate-500 uppercase tracking-wider text-center">Nota</th>
-                  <th className="px-nibo-md py-nibo-md text-xs font-bold text-slate-500 uppercase tracking-wider text-center">Reuniões</th>
-                  <th className="px-nibo-md py-nibo-md text-xs font-bold text-slate-500 uppercase tracking-wider text-center">Risco Churn</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-nibo-gelo/10">
-                {csRanking.map((cs) => (
-                  <tr key={cs.id} className="hover:bg-nibo-gelo/5 transition-colors">
-                    <td className="px-nibo-md py-nibo-md">
-                      <div className="font-semibold text-nibo-petroleo">{cs.name}</div>
-                    </td>
-                    <td className="px-nibo-md py-nibo-md text-center">
-                      <span className={cn(
-                        "px-2.5 py-1 rounded-lg text-xs font-bold",
-                        cs.overallScore >= 4.5 ? "bg-emerald-100 text-emerald-700" : "bg-nibo-amarelo/20 text-nibo-petroleo"
-                      )}>
-                        {cs.overallScore.toFixed(1)}
-                      </span>
-                    </td>
-                    <td className="px-nibo-md py-nibo-md text-center text-sm text-slate-600">{cs.meetingsCount}</td>
-                    <td className="px-nibo-md py-nibo-md text-center">
-                      <span className={cn(
-                        "px-2.5 py-1 rounded-lg text-xs font-bold",
-                        cs.churnRiskCount > 5 ? "bg-nibo-pink/10 text-nibo-pink" : "bg-slate-100 text-slate-600"
-                      )}>
-                        {cs.churnRiskCount}
-                      </span>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </section>
-
-        {/* Team Score Ranking */}
-        <section className="bg-white rounded-nibo-card border border-nibo-gelo/30 shadow-nibo p-nibo-md">
-          <h3 className="font-bold text-nibo-petroleo mb-nibo-md flex items-center gap-nibo-xs">
-            <TrendingUp className="w-5 h-5 text-nibo-azul-escuro" />
-            Pontuação Geral do Time por Categoria
-          </h3>
-          <div className="h-[300px] w-full">
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={teamStats} layout="vertical" margin={{ left: 20, right: 30 }}>
-                <CartesianGrid strokeDasharray="3 3" horizontal={true} vertical={false} stroke="#f1f5f9" />
-                <XAxis type="number" domain={[0, 5]} hide />
-                <YAxis
-                  dataKey="category"
-                  type="category"
-                  axisLine={false}
-                  tickLine={false}
-                  tick={{ fontSize: 12, fontWeight: 600, fill: "#64748b" }}
-                  width={100}
-                />
-                <Tooltip
-                  cursor={{ fill: "#f8fafc" }}
-                  contentStyle={{ borderRadius: "12px", border: "none", boxShadow: "0 10px 15px -3px rgb(0 0 0 / 0.1)" }}
-                />
-                <Bar dataKey="score" radius={[0, 4, 4, 0]} barSize={24}>
-                  {teamStats.map((entry, index) => (
-                    <Cell key={`cell-${index}`} fill={entry.score >= 4.5 ? "#0072ce" : "#6431e2"} />
-                  ))}
-                </Bar>
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
-          <div className="mt-nibo-xs p-nibo-md bg-nibo-gelo/10 rounded-xl border border-nibo-gelo/20">
-            <p className="text-xs text-slate-600 leading-relaxed">
-              <span className="font-bold text-nibo-petroleo">Insight:</span> O time está performando melhor em <span className="font-bold text-nibo-roxo">Rapport</span> e precisa de melhoria em <span className="font-bold text-nibo-roxo">Gestão de Negócio</span>.
-            </p>
-          </div>
-        </section>
-      </div>
-
-      {/* Recent Meetings */}
-      <section className="bg-white rounded-nibo-card border border-nibo-gelo/30 shadow-nibo overflow-hidden">
-        <div className="p-nibo-md border-b border-nibo-gelo/20 flex justify-between items-center">
-          <h3 className="font-bold text-nibo-petroleo flex items-center gap-nibo-xs">
-            <Calendar className="w-5 h-5 text-nibo-azul-escuro" />
-            Histórico de Reuniões Recentes
-          </h3>
-          <Link to="/history" className="text-xs font-bold text-nibo-roxo hover:underline flex items-center gap-nibo-xs">
-            Ver todas <ArrowUpRight className="w-3 h-3" />
-          </Link>
-        </div>
-        <div className="overflow-x-auto">
-          <table className="w-full text-left border-collapse">
-            <thead>
-              <tr className="bg-nibo-gelo/10">
-                <th className="px-nibo-md py-nibo-md text-xs font-bold text-slate-500 uppercase tracking-wider">Cliente</th>
-                <th className="px-nibo-md py-nibo-md text-xs font-bold text-slate-500 uppercase tracking-wider">CS</th>
-                <th className="px-nibo-md py-nibo-md text-xs font-bold text-slate-500 uppercase tracking-wider">Data</th>
-                <th className="px-nibo-md py-nibo-md text-xs font-bold text-slate-500 uppercase tracking-wider text-center">Nota</th>
-                <th className="px-nibo-md py-nibo-md text-xs font-bold text-slate-500 uppercase tracking-wider text-center">Saúde</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-nibo-gelo/10">
-              {meetings.slice(0, 5).map((meeting) => (
-                <tr key={meeting.id} className="hover:bg-nibo-gelo/5 transition-colors cursor-pointer">
-                  <td className="px-nibo-md py-nibo-md">
-                    <div className="font-semibold text-nibo-petroleo">{meeting.clientName}</div>
-                  </td>
-                  <td className="px-nibo-md py-nibo-md text-sm text-slate-600">{meeting.csName}</td>
-                  <td className="px-nibo-md py-nibo-md text-sm text-slate-500">{meeting.date}</td>
-                  <td className="px-nibo-md py-nibo-md text-center">
-                    <span className="font-bold text-nibo-petroleo">{meeting.score.toFixed(1)}</span>
-                  </td>
-                  <td className="px-nibo-md py-nibo-md text-center">
-                    <span className={cn(
-                      "px-2.5 py-1 rounded-lg text-[10px] font-bold uppercase tracking-wider",
-                      meeting.health === "Saudável" ? "bg-emerald-100 text-emerald-700" :
-                      meeting.health === "Atenção" ? "bg-nibo-amarelo/20 text-nibo-petroleo" : "bg-nibo-pink/10 text-nibo-pink"
-                    )}>
-                      {meeting.health}
-                    </span>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </section>
-    </div>
-  );
-}
-
-function HighlightCard({ title, value, subtitle, icon: Icon, color }: { title: string, value: string, subtitle: string, icon: any, color: "purple" | "pink" | "blue" }) {
-  const colors = {
-    purple: "bg-nibo-roxo/10 text-nibo-roxo border-nibo-roxo/20",
-    pink: "bg-nibo-pink/10 text-nibo-pink border-nibo-pink/20",
-    blue: "bg-nibo-azul-escuro/10 text-nibo-azul-escuro border-nibo-azul-escuro/20"
+    if (failuresInCycle.length >= 3) return { type: 'danger', message: 'RISCO DE DESLIGAMENTO', count: failuresInCycle.length };
+    if (failuresInCycle.length >= 2) return { type: 'warning', message: 'RISCO DE CARTÃO', count: failuresInCycle.length };
+    return null;
   };
 
+  const alert = getAlertStatus();
+
   return (
-    <motion.div
-      whileHover={{ y: -4 }}
-      className="bg-white p-nibo-md rounded-nibo-card border border-nibo-gelo/30 shadow-nibo flex items-start gap-nibo-md"
-    >
-      <div className={cn("p-3 rounded-xl border", colors[color])}>
-        <Icon className="w-6 h-6" />
+    <div className="space-y-8 animate-in fade-in duration-500">
+      {/* Risk Alert Banner */}
+      {alert && (
+        <motion.div 
+          initial={{ opacity: 0, y: -20 }}
+          animate={{ opacity: 1, y: 0 }}
+          className={cn(
+            "p-4 rounded-2xl flex items-center gap-4 border shadow-sm",
+            alert.type === 'danger' ? "bg-red-50 border-red-100 text-red-700" : "bg-orange-50 border-orange-100 text-orange-700"
+          )}
+        >
+          <div className={cn(
+            "w-12 h-12 rounded-xl flex items-center justify-center shadow-sm",
+            alert.type === 'danger' ? "bg-red-600 text-white" : "bg-orange-600 text-white"
+          )}>
+            <TrendingUp className="w-6 h-6 rotate-180" />
+          </div>
+          <div className="flex-1">
+            <p className="text-[10px] uppercase font-black tracking-[0.2em] opacity-70">Atenção Crítica</p>
+            <h4 className="text-lg font-black tracking-tight">{alert.message}</h4>
+            <p className="text-sm font-medium opacity-80">O consultor acumulou {alert.count} meses abaixo da meta no ciclo atual.</p>
+          </div>
+        </motion.div>
+      )}
+
+      {/* Header Cards */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+        <motion.div
+          whileHover={{ y: -4 }}
+          className="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm"
+        >
+          <div className="flex items-center gap-3 mb-4">
+            <div className={cn(
+              "p-2 rounded-lg",
+              latestPerformance >= 1.0 ? "bg-green-50 text-green-600" : "bg-red-50 text-red-600"
+            )}>
+              <TrendingUp className="w-5 h-5" />
+            </div>
+            <p className="text-sm font-semibold text-slate-500">Performance Atual</p>
+          </div>
+          <p className={cn(
+            "text-3xl font-black tracking-tight",
+            latestPerformance >= 1.0 ? "text-green-600" : "text-red-600"
+          )}>
+            {formatPercentage(latestPerformance)}
+          </p>
+          <p className={`text-xs mt-2 font-medium ${diff >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+            {diff >= 0 ? '+' : ''}{(diff * 100).toFixed(1)}% em relação ao mês anterior
+          </p>
+        </motion.div>
+
+        <motion.div
+          whileHover={{ y: -4 }}
+          className="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm"
+        >
+          <div className="flex items-center gap-3 mb-4">
+            <div className="p-2 bg-purple-50 text-purple-600 rounded-lg">
+              <Award className="w-5 h-5" />
+            </div>
+            <p className="text-sm font-semibold text-slate-500">Média (12 meses)</p>
+          </div>
+          <p className="text-3xl font-bold text-slate-900">136%</p>
+          <div className="flex mt-2 gap-1 text-slate-300">
+            {[1, 2, 3, 4, 5].map((i) => (
+              <span key={i} className={i <= advisor.averageGrade ? 'text-yellow-400' : ''}>★</span>
+            ))}
+          </div>
+        </motion.div>
+
+        <motion.div
+          whileHover={{ y: -4 }}
+          className="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm"
+        >
+          <div className="flex items-center gap-3 mb-4">
+            <div className="p-2 bg-orange-50 text-orange-600 rounded-lg">
+              <Clock className="w-5 h-5" />
+            </div>
+            <p className="text-sm font-semibold text-slate-500">Ramp Up</p>
+          </div>
+          <p className="text-3xl font-bold text-slate-900">Concluído</p>
+          <p className="text-xs mt-2 text-slate-500 font-medium">85 dias desde o onboarding</p>
+        </motion.div>
+
+        <motion.div
+          whileHover={{ y: -4 }}
+          className="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm"
+        >
+          <div className="flex items-center gap-3 mb-4">
+            <div className="p-2 bg-emerald-50 text-emerald-600 rounded-lg">
+              <Calendar className="w-5 h-5" />
+            </div>
+            <p className="text-sm font-semibold text-slate-500">Próximo One-a-One</p>
+          </div>
+          <p className="text-xl font-bold text-slate-900">20 de Março</p>
+          <p className="text-xs mt-2 text-slate-500 font-medium tracking-tight">Quinta-feira, às 14:00</p>
+        </motion.div>
       </div>
-      <div>
-        <p className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-nibo-xs">{title}</p>
-        <p className="text-xl font-bold text-nibo-petroleo mb-nibo-xs">{value}</p>
-        <p className="text-xs text-slate-500">{subtitle}</p>
+
+      {/* Monthly Summary Grid */}
+      <div className="bg-white p-8 rounded-[32px] border border-slate-100 shadow-sm overflow-hidden relative">
+        {alert && (
+          <motion.div 
+            initial={{ opacity: 0, x: 20 }}
+            animate={{ opacity: 1, x: 0 }}
+            className={cn(
+              "absolute top-8 right-8 px-4 py-2 rounded-full border flex items-center gap-2 shadow-sm z-10",
+              alert.type === 'danger' ? "bg-red-600 text-white border-red-500" : "bg-orange-500 text-white border-orange-400"
+            )}
+          >
+            <div className="w-2 h-2 rounded-full bg-white animate-pulse" />
+            <span className="text-[10px] font-black uppercase tracking-[0.1em]">{alert.message}</span>
+          </motion.div>
+        )}
+
+        <div className="flex flex-col md:flex-row md:items-center justify-between mb-8 gap-4">
+          <div>
+            <div className="flex items-center gap-2 mb-1">
+              <h3 className="text-xl font-black text-slate-900 tracking-tight">Grade de Evolução</h3>
+              {alert && (
+                <div className={cn(
+                  "w-2 h-2 rounded-full",
+                  alert.type === 'danger' ? "bg-red-500 shadow-[0_0_10px_rgba(239,68,68,0.5)]" : "bg-orange-500"
+                )} />
+              )}
+            </div>
+            <p className="text-sm text-slate-500 font-medium">Ciclo de Gestão: Agosto a Julho</p>
+          </div>
+          <div className="flex bg-slate-50 px-3 py-1.5 rounded-xl border border-slate-100 gap-4">
+            <div className="flex items-center gap-2">
+              <div className="w-2 h-2 rounded-full bg-green-500" />
+              <span className="text-[10px] font-black uppercase text-slate-400">Batida</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <div className="w-2 h-2 rounded-full bg-red-500" />
+              <span className="text-[10px] font-black uppercase text-slate-400">Abaixo</span>
+            </div>
+          </div>
+        </div>
+        
+        <div className="overflow-x-auto pb-4 scrollbar-hide">
+          <div className="flex gap-4 min-w-max px-1">
+            {['08', '09', '10', '11', '12', '01', '02', '03', '04', '05', '06', '07'].map(monthNum => {
+              const year = parseInt(monthNum) >= 8 ? '2025' : '2026';
+              const monthKey = `${year}-${monthNum}`;
+              const p = performance.find(perf => perf.month === monthKey);
+              
+              return (
+                <div key={monthKey} className="flex flex-col items-center gap-3">
+                  <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{monthNum}/{year.slice(-2)}</div>
+                  <motion.div 
+                    whileHover={{ scale: 1.05, y: -2 }}
+                    className={cn(
+                      "w-20 h-20 rounded-[28px] flex items-center justify-center border-2 text-xs font-black shadow-sm transition-all relative overflow-hidden",
+                      !p ? "bg-slate-50 border-slate-100 text-slate-200 border-dashed" :
+                      p.status === 'ramp' ? "bg-blue-50 border-blue-200 text-blue-600" :
+                      p.status === 'vacation' ? "bg-slate-50 border-slate-200 text-slate-400" :
+                      p.percentage >= 1.0 
+                        ? "bg-green-50 border-green-200 text-green-600 shadow-green-100/50" 
+                        : "bg-red-50 border-red-200 text-red-600 shadow-red-100/50"
+                    )}
+                  >
+                    {!p ? '-' : p.status === 'ramp' ? 'RAMP' : p.status === 'vacation' ? 'FÉRIAS' : formatPercentage(p.percentage)}
+                    
+                    {p && p.percentage < 1.0 && p.status === 'normal' && (
+                      <div className="absolute bottom-0 left-0 w-full h-1 bg-red-500/20" />
+                    )}
+                  </motion.div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+
+        {alert && (
+          <motion.div 
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            className={cn(
+              "mt-6 p-4 rounded-2xl flex items-center gap-3 border",
+              alert.type === 'danger' ? "bg-red-50 border-red-100" : "bg-orange-50 border-orange-100"
+            )}
+          >
+            <AlertCircle className={cn("w-5 h-5", alert.type === 'danger' ? "text-red-600" : "text-orange-600")} />
+            <p className={cn("text-xs font-bold", alert.type === 'danger' ? "text-red-700" : "text-orange-700")}>
+              {alert.type === 'danger' ? 'Atenção Crítica:' : 'Aviso de Performance:'} {alert.message} detectado. Recomenda-se uma reunião de alinhamento imediata.
+            </p>
+          </motion.div>
+        )}
       </div>
-    </motion.div>
+
+      {/* Main Chart */}
+      <div className="bg-white p-8 rounded-3xl border border-slate-100 shadow-sm">
+        <div className="flex items-center justify-between mb-8">
+          <div>
+            <h3 className="text-xl font-bold text-slate-900">Evolução do Consultor</h3>
+            <p className="text-sm text-slate-500">Acompanhamento da meta mensal entregue</p>
+          </div>
+          <div className="flex gap-2">
+            <span className="px-3 py-1 bg-slate-50 text-slate-600 rounded-full text-xs font-semibold border border-slate-100">Ano 2026</span>
+          </div>
+        </div>
+
+        <div className="h-80 w-full">
+          <ResponsiveContainer width="100%" height="100%">
+            <AreaChart data={performance}>
+              <defs>
+                <linearGradient id="colorPerf" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="5%" stopColor="#2563eb" stopOpacity={0.1}/>
+                  <stop offset="95%" stopColor="#2563eb" stopOpacity={0}/>
+                </linearGradient>
+              </defs>
+              <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+              <XAxis
+                dataKey="month"
+                axisLine={false}
+                tickLine={false}
+                tick={{ fontSize: 11, fill: '#64748b' }}
+                dy={10}
+              />
+              <YAxis
+                axisLine={false}
+                tickLine={false}
+                tick={{ fontSize: 11, fill: '#64748b' }}
+                tickFormatter={(val) => `${(val * 100)}%`}
+              />
+              <Tooltip
+                contentStyle={{
+                  backgroundColor: '#fff',
+                  border: 'none',
+                  borderRadius: '12px',
+                  boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)'
+                }}
+                formatter={(val: number) => [formatPercentage(val), 'Performance']}
+              />
+              <Area
+                type="monotone"
+                dataKey="percentage"
+                stroke="#2563eb"
+                strokeWidth={3}
+                fillOpacity={1}
+                fill="url(#colorPerf)"
+                animationDuration={1500}
+              />
+            </AreaChart>
+          </ResponsiveContainer>
+        </div>
+      </div>
+
+      {/* Scorecard and O1O Agenda */}
+      <ScorecardView advisorId={advisor.id} />
+    </div>
   );
 }
