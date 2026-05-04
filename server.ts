@@ -1,84 +1,140 @@
-import express from "express";
-import { createServer as createViteServer } from "vite";
-import path from "path";
-import { fileURLToPath } from "url";
+import express from 'express';
+import { createServer as createViteServer } from 'vite';
+import path from 'path';
+import { fileURLToPath } from 'url';
+import { google } from 'googleapis';
+import session from 'express-session';
+import cookieParser from 'cookie-parser';
+import dotenv from 'dotenv';
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
+declare module 'express-session' {
+  interface SessionData {
+    tokens: any;
+  }
+}
+
+dotenv.config();
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 async function startServer() {
   const app = express();
   const PORT = 3000;
 
   app.use(express.json());
-
-  // Mock Data
-  const csRanking = [
-    { id: 1, name: "Sthephany Talasca", overallScore: 4.8, meetingsCount: 45, churnRiskCount: 2, scores: { rapport: 4.9, management: 4.7, product: 4.8, business: 4.6 } },
-    { id: 2, name: "Brayan Santos", overallScore: 4.5, meetingsCount: 38, churnRiskCount: 5, scores: { rapport: 4.4, management: 4.6, product: 4.5, business: 4.5 } },
-    { id: 3, name: "Camille Vaz", overallScore: 4.7, meetingsCount: 42, churnRiskCount: 1, scores: { rapport: 4.8, management: 4.5, product: 4.7, business: 4.8 } },
-    { id: 4, name: "Yuri Santos", overallScore: 4.2, meetingsCount: 50, churnRiskCount: 8, scores: { rapport: 4.0, management: 4.3, product: 4.2, business: 4.1 } },
-  ];
-
-  const meetings = [
-    { id: "1", clientName: "Contabilidade Express", csName: "Sthephany Talasca", date: "2026-04-14", score: 4.9, health: "Saudável", churnRisk: "Baixo" },
-    { id: "2", clientName: "Tech Solutions", csName: "Brayan Santos", date: "2026-04-13", score: 4.2, health: "Atenção", churnRisk: "Médio" },
-    { id: "3", clientName: "Global Logistics", csName: "Camille Vaz", date: "2026-04-12", score: 4.7, health: "Saudável", churnRisk: "Baixo" },
-    { id: "4", clientName: "Inovação Digital", csName: "Yuri Santos", date: "2026-04-11", score: 3.8, health: "Crítica", churnRisk: "Alto" },
-  ];
-
-  const insights = [
-    { id: 1, type: "bug", description: "Erro ao importar extrato OFX no Nibo Gestão", product: "Nibo Gestão", frequency: 12 },
-    { id: 2, type: "bug", description: "Lentidão na geração do relatório de DRE", product: "Nibo Contador", frequency: 8 },
-    { id: 3, type: "improvement", description: "Adicionar filtro por categoria na conciliação", product: "Nibo Gestão", frequency: 15 },
-    { id: 4, type: "improvement", description: "Integração direta com bancos via Open Banking", product: "Nibo Gestão", frequency: 20 },
-    { id: 5, type: "bug", description: "Falha na sincronização de notas fiscais", product: "Nibo Gestão", frequency: 5 },
-  ];
-
-  // API Routes
-  app.get("/api/cs-ranking", (req, res) => {
-    res.json(csRanking);
-  });
-
-  app.get("/api/meetings", (req, res) => {
-    res.json(meetings);
-  });
-
-  app.get("/api/insights", (req, res) => {
-    const { product } = req.query;
-    let filtered = insights;
-    if (product && product !== "Todos") {
-      filtered = insights.filter(i => i.product === product);
+  app.use(cookieParser());
+  app.use(session({
+    secret: process.env.SESSION_SECRET || 'nibo-advisor-secret',
+    resave: false,
+    saveUninitialized: true,
+    cookie: { 
+      secure: true, 
+      sameSite: 'none',
+      httpOnly: true 
     }
-    res.json(filtered);
+  }));
+
+  const oauth2Client = new google.auth.OAuth2(
+    process.env.GOOGLE_CLIENT_ID,
+    process.env.GOOGLE_CLIENT_SECRET,
+    process.env.GOOGLE_REDIRECT_URI || `${process.env.APP_URL}/auth/callback`
+  );
+
+  // Auth Routes
+  app.get('/api/auth/google/url', (req, res) => {
+    const scopes = [
+      'https://www.googleapis.com/auth/calendar.readonly'
+    ];
+
+    const url = oauth2Client.generateAuthUrl({
+      access_type: 'offline',
+      scope: scopes,
+      prompt: 'consent'
+    });
+
+    res.json({ url });
   });
 
-  app.get("/api/team-stats", (req, res) => {
-    const categories = ["rapport", "management", "product", "business"];
-    const stats = categories.map(cat => {
-      const avg = csRanking.reduce((acc, cs) => acc + (cs.scores as any)[cat], 0) / csRanking.length;
-      return { category: cat, score: parseFloat(avg.toFixed(1)) };
-    });
-    res.json(stats);
+  app.get(['/auth/callback', '/auth/callback/'], async (req, res) => {
+    const { code } = req.query;
+    
+    if (!code) {
+      return res.status(400).send('Missing code');
+    }
+
+    try {
+      const { tokens } = await oauth2Client.getToken(code as string);
+      // In a real app, you'd store tokens in a database linked to the user
+      // For this demo, we'll keep them in the session
+      (req.session as any).tokens = tokens;
+
+      res.send(`
+        <html>
+          <body>
+            <script>
+              if (window.opener) {
+                window.opener.postMessage({ type: 'OAUTH_AUTH_SUCCESS' }, '*');
+                window.close();
+              } else {
+                window.location.href = '/';
+              }
+            </script>
+            <p>Autenticação bem-sucedida! Esta janela fechará automaticamente.</p>
+          </body>
+        </html>
+      `);
+    } catch (error) {
+      console.error('Error exchanging code:', error);
+      res.status(500).send('Authentication failed');
+    }
+  });
+
+  app.get('/api/calendar/next-meeting', async (req, res) => {
+    const tokens = (req.session as any).tokens;
+    if (!tokens) {
+      return res.status(401).json({ error: 'Not authenticated' });
+    }
+
+    oauth2Client.setCredentials(tokens);
+    const calendar = google.calendar({ version: 'v3', auth: oauth2Client });
+
+    try {
+      const response = await calendar.events.list({
+        calendarId: 'primary',
+        timeMin: new Date().toISOString(),
+        maxResults: 10,
+        singleEvents: true,
+        orderBy: 'startTime',
+        q: 'One-a-One' // Filter for 1:1 meetings
+      });
+
+      const events = response.data.items || [];
+      const nextMeeting = events[0];
+
+      res.json({ nextMeeting });
+    } catch (error) {
+      console.error('Error fetching calendar:', error);
+      res.status(500).json({ error: 'Failed to fetch calendar' });
+    }
   });
 
   // Vite middleware for development
-  if (process.env.NODE_ENV !== "production") {
+  if (process.env.NODE_ENV !== 'production') {
     const vite = await createViteServer({
       server: { middlewareMode: true },
-      appType: "spa",
+      appType: 'spa',
     });
     app.use(vite.middlewares);
   } else {
-    const distPath = path.join(process.cwd(), "dist");
+    const distPath = path.join(process.cwd(), 'dist');
     app.use(express.static(distPath));
-    app.get("*", (req, res) => {
-      res.sendFile(path.join(distPath, "index.html"));
+    app.get('*', (req, res) => {
+      res.sendFile(path.join(distPath, 'index.html'));
     });
   }
 
-  app.listen(PORT, "0.0.0.0", () => {
-    console.log(`Server running on http://localhost:${PORT}`);
+  app.listen(PORT, '0.0.0.0', () => {
+    console.log(`Server running on http://0.0.0.0:${PORT}`);
   });
 }
 
